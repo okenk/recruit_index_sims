@@ -307,6 +307,20 @@ ggsave(
   dpi = 500
 )
 
+tmp <- mare_ts
+tmp@data <- tmp@data |>
+  filter(species == 'Cod')
+tmp@facet <- facet_null()
+tmp +
+  ylim(0, 0.13 * 1.05)
+ggsave(
+  'nsaw_figs/ssb_mare5.png',
+  device = 'png',
+  width = 8,
+  height = 4,
+  dpi = 500
+)
+
 ## Unfished recruitment
 r0 <- scalar |>
   tidyr::pivot_wider(

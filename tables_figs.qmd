@@ -1,12 +1,16 @@
 ---
-title: "TITLE"
+title: ""
 format: 
-  docx: default
+  docx: 
+    fig-width: 6
+    fig-height: 4.8
+    fig-dpi: 300
   html: default
 ---
 
 ```{r}
 #| message: false
+#| warning: false
 #| echo: false
 #| keep-md: true
 
@@ -120,7 +124,7 @@ ts_long <- ts |>
   group_by(species, nyr, name, scenario, year, sigR) |>
   summarise(mare = mean(abs((em-om)/om)),
             mre = mean((em-om)/om))|>
-  mutate(year = ifelse(species == 'Petrale', year - petrale_om$dat$styr, year))
+  mutate(year = ifelse(species == 'Petrale', year - petrale_om$dat$styr + 1, year))
 
 scalar <- purrr::map(big_res, purrr::pluck, 'scalar') |>
   bind_rows(.id = 'ID') |>
@@ -144,11 +148,13 @@ dq_long <- dq |>
   tidyr::pivot_longer(Value.SSB:Value.lnSPB) |>
   tidyr::pivot_wider(names_from = model_run, values_from = value, 
                      id_cols = c(iteration, scenario, year, name, species, nyr, sigR)) |>
-  filter(!is.na(em)) |> 
-  group_by(species, nyr, name, scenario, year, sigR) |>
-  summarise(mare = mean(abs((em-om)/om)),
-            mre = mean((em-om)/om)) |>
-  mutate(year = ifelse(species == 'Petrale', year - petrale_om$dat$styr, year))
+  filter(!is.na(em), !is.na(om)) |> 
+  mutate(re = (em-om)/om) |>
+  group_by(species, nyr, name, scenario, year, sigR) |> 
+  summarise(mare = mean(abs(re)),
+            mre = mean(re),
+            mare_bounds = tibble::as_tibble_row(quantile(abs(re), probs = c(0.05, 0.95)))) |>
+  mutate(year = ifelse(species == 'Petrale', year - petrale_om$dat$styr + 1, year))
 
 bad_sims <- purrr::map(big_res, purrr::pluck, 'bad_sims') |>
   bind_rows(.id = 'ID')
@@ -181,13 +187,14 @@ par_names <- c('Steepness',
                'Length at old age',
                'CV of length at old age',
                'Von Bertalanffy growth rate',
+               'Length at 50% maturity',
                'Imputed age at 50% survey selectivity',
                'Adult survey catchability'
 )
 
 par_symb <- c('h', '\\log(R_0)', '\\sigma_R', 'M', 'A\\min', 'L_{A\\min}', 
               'CV_{A\\min}', 'A\\max', 'L_{A\\max}', 'CV_{A\\max}',
-              'K', '', 'Q')
+              'K', '', '', 'Q')
 
 nrows <- length(par_names)
 
@@ -241,6 +248,9 @@ om_table['CV of length at old age', c('p.est', 'c.est')] <- 'Estimated'
 om_table['Von Bertalanffy growth rate', 'c.value'] <- cod_ctl$MG_parms['VonBert_K_Fem_GP_1', 'INIT']
 om_table['Von Bertalanffy growth rate', 'p.value'] <- round(petrale_ctl$MG_parms['VonBert_K_Fem_GP_1', 'INIT'], 3)
 om_table['Von Bertalanffy growth rate', c('p.est', 'c.est')] <- 'Estimated'
+
+om_table['Length at 50% maturity', 'c.value'] <- paste(round(cod_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
+om_table['Length at 50% maturity', 'p.value'] <- paste(round(petrale_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
 
 om_table['Imputed age at 50% survey selectivity', 'c.value'] <- cod_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet == 2, Yr == -2) |> 
@@ -315,7 +325,8 @@ cod_age_selex <- cod_om_rep$ageselex |>
   geom_line(aes(x = Age, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Age (yrs)') +
   theme(legend.position = 'none') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
 
 cod_size_selex <- cod_om_rep$sizeselex |> 
   filter(Factor == 'Lsel', Yr == -2, Fleet != 3) |>
@@ -326,7 +337,9 @@ cod_size_selex <- cod_om_rep$sizeselex |>
   ggplot() +
   geom_line(aes(x = Length, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Length (cm)', col = 'Fleet') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5) +
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
 
 petrale_age_selex <- petrale_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet != 3, Fleet != 5, Yr == 1920) |> # fleet 3: triennial, fleet 5: env
@@ -340,7 +353,8 @@ petrale_age_selex <- petrale_om_rep$ageselex |>
   geom_line(aes(x = Age, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Age (yrs)', col = 'Fleet') +
   theme(legend.position = 'none') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3))
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
 
 petrale_size_selex <- petrale_om_rep$sizeselex |> 
   filter(Factor == 'Lsel', Fleet != 3, Fleet != 5, Yr == 1920) |> # fleet 3: triennial, fleet 5: env
@@ -353,21 +367,23 @@ petrale_size_selex <- petrale_om_rep$sizeselex |>
   ggplot() +
   geom_line(aes(x = Length, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Length (cm)', col = 'Fleet') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3))
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(d)', hjust = -0.5, vjust = 1.5) +
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
 
 cod_title <- cowplot::ggdraw() + 
-  cowplot::draw_label("Atlantic cod selectivity", x = 0, hjust = 0) +
+  cowplot::draw_label("Atlantic cod selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
   theme(plot.margin = margin(0, 0, 0, 7))
 
 petrale_title <- cowplot::ggdraw() + 
-  cowplot::draw_label("Petrale sole selectivity", x = 0, hjust = 0) +
+  cowplot::draw_label("Petrale sole selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
   theme(plot.margin = margin(0, 0, 0, 7))
 
 cowplot::plot_grid(
   cod_title,
-  cowplot::plot_grid(cod_age_selex, cod_size_selex, ncol = 2, rel_widths = c(0.4, 0.6), labels = c('a)', 'b)')),
+  cowplot::plot_grid(cod_age_selex, cod_size_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
   petrale_title,
-  cowplot::plot_grid(petrale_age_selex, petrale_size_selex, ncol = 2, rel_widths = c(0.4, 0.6), labels = c('c)', 'd)')),
+  cowplot::plot_grid(petrale_age_selex, petrale_size_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
   nrow = 4, rel_heights = c(1, 6, 1, 6)
 )
 
@@ -386,7 +402,8 @@ exploitation <- petrale_om_rep$exploitation |>
   ggplot() +
   geom_line(aes(x = Yr, y = exploitation, col = Fleet, group = Fleet)) +
   labs(x = 'Year', y = expression(paste('Exploitation rate (', yr^{-1}, ')'))) +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
 
 # could add horizontal line for cod to this figure?
 
@@ -398,18 +415,20 @@ petrale_catch <- petrale_om_rep$catch |>
   geom_col(aes(x = Yr, y = dead_bio, fill = Fleet_Name)) +
   labs(x = 'Year', y = 'Petrale catch (mt)', fill = 'Fleet') +
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none') +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
 
 
 cod_catch <- cod_om_rep$catch |>
   ggplot() +
   geom_col(aes(x = Yr, y = dead_bio)) +
-  labs(x = 'Year', y = 'Cod catch (mt)')
+  labs(x = 'Year', y = 'Cod catch (mt)') +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5)
 
 cowplot::plot_grid(
   exploitation,
-  cowplot::plot_grid(cod_catch, petrale_catch, ncol = 2, labels = c('b)', 'c)')),
-  nrow = 2, labels = c('a)', '')
+  cowplot::plot_grid(cod_catch, petrale_catch, ncol = 2),
+  nrow = 2
 )
 
 ```
@@ -427,16 +446,17 @@ dq |>
          (iteration == 46 & species == 'Cod') | (iteration == 30 & species == 'Petrale'))|>
   mutate(Model = factor(ifelse(model_run == 'om', 'Oper. mod.', scenario))) |>
   mutate(Model = forcats::fct_rev(Model),
-         year = ifelse(species == 'Petrale', year - petrale_om$dat$styr, year)) |>
+         year = ifelse(species == 'Petrale', year - petrale_om$dat$styr + 1, year)) |>
   ggplot() +
-  annotate(geom = 'rect', xmin = 100, xmax = 112, ymin = 0, ymax = 1, fill = 'gray90') +
+  annotate(geom = 'rect', xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf, fill = 'gray90') +
   geom_line(aes(x = year, y = Value.Bratio, col = Model, lty = Model)) +
   scale_color_manual(values = c('gray50', LaCroixColoR::lacroix_palette('Orange', 6))) +
   labs(x = 'Year', y = 'Relative spawning output') +
   # scale_y_continuous(labels = NULL) +
   scale_linetype_manual(values = lty_vec) +
   facet_wrap(~ species) +
-  ylim(0, NA)
+  ylim(0, 1) +
+  theme(legend.position = 'bottom', legend.direction = 'horizontal')
 ```
 
 ```{r}
@@ -485,8 +505,11 @@ ts |>
   # scale_fill_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
   labs(x = 'Index SE', y = 'Relative error of\nlog(terminal year recruitment)', 
        fill = 'Number of\nyears of index') +
-  facet_grid(sigR ~ species, labeller = label_parsed) +
-  ggsidekick::theme_sleek()
+  facet_grid(species ~ sigR, labeller = label_parsed) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])
+
+
 
 # Appendix? Delete entirely?
 ```
@@ -513,6 +536,7 @@ p.high_sigR <- scalar |>
         strip.text = element_blank(), 
         plot.title = element_text(hjust = 0.5, size = rel(0.8)),
         axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
         plot.margin = margin(r = 0))
 
 p.low_sigR <- scalar |> 
@@ -531,7 +555,8 @@ p.low_sigR <- scalar |>
        title = parse(text = '"Low"~sigma[R]')) +
   facet_wrap(~ species, scales = 'free_y', nrow = 2, strip.position = 'right') +
   theme(plot.title = element_text(hjust = 0.5, size = rel(0.8)),
-        axis.title.x = element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
         plot.margin = margin(l = 0))
 
 x.title <- cowplot::ggdraw() + 
@@ -568,67 +593,105 @@ scalar |>
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   facet_wrap(~ sigR, labeller = label_parsed) +
   labs(x = 'Index SE', y = 'Relative error of natural mortality', 
-       fill = 'Number of\nyears of index')
+       fill = 'Number of\nyears of index') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = 'bottom', 
+        legend.direction = 'horizontal'
+  )
+
 ```
 
 
 ```{r}
-#| label: fig-temp
-#| fig-cap: ""
-
-ranges <- dq_long |>
-  # filter(sigR != 'high' | year >= 95) |>
-  group_by(species, name, sigR) |>
-  summarise(max_mare = max(mare, na.rm = TRUE),
-            max_mre = max(mre, na.rm = TRUE),
-            min_mre = min(mre, na.rm = TRUE))
+#| label: fig-mare-ts
+#| fig-cap: "Mean absolute relative error of spawning depletion (spawning output relative to unfished) at different levels of recruitment index uncertainty. Panels a, c, e, and g are time series that include the final 15 years of the hindcast period (white) and the full 12 years of the forecast period (gray), only for models with 10-year recruitment indices. Panels b, d, f, and h include the mean absolute relative error (points) and 90% simulation intervals of absolute relative error (vertical lines) at the beginning and and end of the forecast period, for both the 10-year (solid) and 30-year (dashed) index. Note that y-axes are only consistent within a column."
+#| warning: false
+#| fig-width: 9
+#| fig-height: 7
+#| out-width: "100%"
+#| dpi: 300
 
 mare_ts <- dq_long |>
+  filter(nyr == 10, name == 'Value.SSB', year >= 85) |>
   ggplot() +
-  geom_line(aes(x = year, y = mare, col = scenario, linetype = factor(nyr), group = paste(scenario, nyr))) +
+  annotate("rect", xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf,
+           fill = "gray90") +
+  geom_line(aes(x = year, y = mare, col = scenario, group = paste(scenario, nyr))) +
   scale_color_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
-  labs(x = 'Year', color = 'Index SE') +
-  facet_wrap(~ species, scales = 'free_y', nrow = 2, strip.position = 'right') +
-  NULL
+  labs(x = 'Year') +
+  ylim(0, NA) +
+  facet_wrap(~ species, nrow = 2) +
+  theme(legend.position = 'none', strip.text = element_blank()) +
+  NULL 
 
-p <- mare_ts
-p$layers <- c(geom_rect(aes(ymax = 1.05*max_mare), xmin = 100, xmax = 114, ymin = 0, fill = 'gray90', 
-                        data = filter(ranges, name == 'Value.Bratio', sigR == 'high')), 
-              mare_ts$layers)
+mare_ts_high <- mare_ts + 
+  ylab('Mean absolute relative error\nof spawning depletion') + 
+  geom_text(aes(label = labs), x = -Inf, y = Inf, hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(a)', '(e)'), species = c('Cod', 'Petrale'), sigR = 'high'))
+mare_ts_high@data <- filter(mare_ts@data, sigR == 'high')
+mare_ts_low <- mare_ts + 
+  ylab('') +
+  geom_text(aes(label = labs), x = -Inf, y = Inf, hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(c)', '(g)'), species = c('Cod', 'Petrale'), sigR = 'low'))
+mare_ts_low@data <- filter(mare_ts@data, sigR == 'low')
 
-high_sigR <- p %+% filter(dq_long, name == 'Value.Bratio', sigR == 'high', ) +
-  labs(y = 'Mean absolute relative error\nof Spawning depletion', 
-       title = parse(text = '"High"~sigma[R]')) +
-  theme(legend.position = 'none',
-        strip.text = element_blank(),
-        plot.title = element_text(hjust = 0.5, size = rel(0.8)),
-        axis.title.x = element_blank())
+mare_pts <- dq_long |>
+  filter(name == 'Value.SSB', year == 101 | year == 112) |>
+  tidyr::unpack(mare_bounds) |>
+  ungroup() |>
+  mutate(year = paste('Year', year)) |>
+  ggplot(aes(x = interaction(nyr, year, sep = ':'), col = scenario)) +
+  geom_point(aes(y = mare), position = position_dodge(width = 0.8)) +
+  geom_linerange(aes(ymin = `5%`, ymax = `95%`, linetype = factor(nyr)), position = position_dodge(width = 0.8)) +
+  facet_wrap(~species, nrow = 2) +
+  guides(x = legendry::guide_axis_nested(key = ':', title = NULL, 
+                                         levels_text = list(element_blank(), element_text())),
+         col = guide_legend(reverse = TRUE)) +
+  scale_color_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
+  theme(legend.position = 'none', strip.text = element_blank()) +
+  labs(y = '', col = 'Index SE', linetype = 'Number of\nyears of index')
 
-p$layers <- c(annotate(geom = 'rect', ymax = 0.45, xmin = 100, xmax = 114, ymin = 0, fill = 'gray90'), 
-              mare_ts$layers)
+mare_pts_high <- mare_pts +
+   geom_text(aes(label = labs), x = -Inf, y = Inf, col = 'black', hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(b)', '(f)'), species = c('Cod', 'Petrale'), sigR = 'low'))
+mare_pts_high@data <- filter(mare_pts@data, sigR == 'high')
+mare_pts_low <- mare_pts +
+  geom_text(aes(label = labs), x = -Inf, y = Inf, col = 'black', hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(d)', '(h)'), species = c('Cod', 'Petrale'), sigR = 'high'))
+mare_pts_low@data <- filter(mare_pts@data, sigR == 'low')
 
-high_sigR_late <- p %+% filter(dq_long, name == 'Value.Bratio', sigR == 'high', year >= 95, species == 'Petrale') +
-  lims(x = c(95, 114)) +
-  theme(legend.position = 'none',
-        strip.text = element_blank(),
-        axis.title = element_blank())
+# combine figures
 
-p$layers <- c(geom_rect(aes(ymax = 1.05*max_mare), xmin = 100, xmax = 114, ymin = 0, fill = 'gray90', 
-                        data = filter(ranges, name == 'Value.Bratio', sigR == 'low')), 
-              mare_ts$layers)
+shared_legend <- cowplot::get_legend(mare_pts + theme(legend.position = "bottom", legend.direction = "horizontal"))
 
-low_sigR <- p %+% filter(dq_long, name == 'Value.Bratio', sigR == 'low') +
-  ggtitle(parse(text = '"Low"~sigma[R]')) +
-  theme(legend.position = 'none',
-        strip.text = element_blank(),
-        plot.title = element_text(hjust = 0.5, size = rel(0.8)),
-        axis.title = element_blank())
+label_cod     <- patchwork::wrap_elements(grid::textGrob("Cod", rot = 270))
+label_petrale <- patchwork::wrap_elements(grid::textGrob("Petrale", rot = 270))
 
-legend <- cowplot::get_legend(low_sigR +
-                              theme(legend.box.margin = margin(0, 0, 0, 12)))
+plot_row <- (
+  mare_ts_high + mare_pts_high | 
+  mare_ts_low + mare_pts_low |
+  (label_cod / label_petrale) 
+  # patchwork::wrap_elements(shared_legend) 
+) + 
+  patchwork::plot_layout(widths = c(4, 4, 0.2))
 
-cowplot::plot_grid(high_sigR, low_sigR, nrow = 1)
+label_high <- patchwork::wrap_elements(grid::textGrob(expression(High ~ sigma[R])))
+label_low  <- patchwork::wrap_elements(grid::textGrob(expression(Low ~ sigma[R])))
+header_row <- label_high + 
+              label_low +
+              patchwork::plot_spacer() + 
+              # patchwork::plot_spacer() +  
+              patchwork::plot_layout(widths = c(4, 4, 0.2))
 
+header_row / plot_row / shared_legend +
+  patchwork::plot_layout(heights = c(0.075, 1, 0.15))
+
+# dq |>
+#   filter(species == 'Petrale', sigR == 'low', nyr == 10, scenario != 'No index', (year-1922) %in% 80:100) |> #95:112) |> 
+#   tidyr::pivot_wider(names_from = model_run, values_from = Value.Recr, 
+#                      id_cols = c(iteration, scenario, year)) |>
+#   mutate(are = abs((em-om)/om),
+#          rel_err = (em - om)/om) |>
+#   ggplot() +
+#   geom_violin(aes(x = scenario, y = rel_err)) +
+#   facet_wrap(~ year) +
+#   geom_hline(yintercept = 0)
 
 ```
 
