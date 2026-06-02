@@ -1,11 +1,11 @@
 ---
 title: ""
 format: 
-  docx: 
+  pdf: 
+    fig-pos: 'H'
     fig-width: 6
     fig-height: 4.8
     fig-dpi: 300
-  html: default
 ---
 
 ```{r}
@@ -14,7 +14,7 @@ format:
 #| echo: false
 #| keep-md: true
 
-knitr::opts_chunk$set(echo = FALSE, dpi = 500)
+knitr::opts_chunk$set(echo = FALSE, dpi = 500, message = FALSE)
 
 library(r4ss)
 library(here)
@@ -43,6 +43,8 @@ theme_sleek <- function (base_size = 11, base_family = "")
 }
 
 theme_set(theme_sleek())
+
+pal <- c(rev(LaCroixColoR::lacroix_palette('Orange', 5)), '#EE2C2C')
 
 cod_om <- SS_read(here('inst/extdata/models/cod/om'))
 cod_ctl <- cod_om$ctl
@@ -167,14 +169,17 @@ stat1 <- dq |>
     values_from = Value.Bratio
   ) |> 
   mutate(diff = `No index` - `0.05`) |> summarize(mean(diff > 0))
-
 ```
 
 # Tables
 
+<!-- this vspace is just to get the table to float correctly -->
+\vspace{0.1mm}
+
 ```{r}
-#| label: tbl-om
-#| tbl-cap: "Operating model parameters and their treatment in estimation models"
+#| label: om-table
+#| results: asis
+#| fig-pos: 'H'
 
 par_names <- c('Steepness',
                'log of unfished recruitment',
@@ -187,14 +192,18 @@ par_names <- c('Steepness',
                'Length at old age',
                'CV of length at old age',
                'Von Bertalanffy growth rate',
-               'Length at 50% maturity',
-               'Imputed age at 50% survey selectivity',
+               'Length at 50\\% maturity',
+               'Imputed age near 60\\% maturity',
+               'Imputed age at 50\\% survey selectivity',
                'Adult survey catchability'
 )
 
-par_symb <- c('h', '\\log(R_0)', '\\sigma_R', 'M', 'A\\min', 'L_{A\\min}', 
-              'CV_{A\\min}', 'A\\max', 'L_{A\\max}', 'CV_{A\\max}',
-              'K', '', '', 'Q')
+par_symb <-  c(
+  '$h$', '$\\log(R_0)$', '$\\sigma_R$', '$M$', 
+  '$A_{\\min}$', '$L_{A_{\\min}}$', '$CV_{A_{\\min}}$', 
+  '$A_{\\max}$', '$L_{A_{\\max}}$', '$CV_{A_{\\max}}$',
+  '$K$', '$m_{50\\%}$', '', '', '$Q$'
+)
 
 nrows <- length(par_names)
 
@@ -249,10 +258,18 @@ om_table['Von Bertalanffy growth rate', 'c.value'] <- cod_ctl$MG_parms['VonBert_
 om_table['Von Bertalanffy growth rate', 'p.value'] <- round(petrale_ctl$MG_parms['VonBert_K_Fem_GP_1', 'INIT'], 3)
 om_table['Von Bertalanffy growth rate', c('p.est', 'c.est')] <- 'Estimated'
 
-om_table['Length at 50% maturity', 'c.value'] <- paste(round(cod_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
-om_table['Length at 50% maturity', 'p.value'] <- paste(round(petrale_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
+om_table['Length at 50\\% maturity', 'c.value'] <- paste(round(cod_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
+om_table['Length at 50\\% maturity', 'p.value'] <- paste(round(petrale_ctl$MG_parms['Mat50%_Fem_GP_1', 'INIT'], 1), 'cm')
+# both randomly have 60% maturity near integer-valued ages 
+om_table['Imputed age near 60\\% maturity', 'c.value'] <- 
+  paste(cod_om_rep$endgrowth$Age_Beg[abs(cod_om_rep$endgrowth$Len_Mat - 0.6) < 0.05],
+        'yrs')
+om_table['Imputed age near 60\\% maturity', 'p.value'] <- 
+  paste(petrale_om_rep$endgrowth$Age_Beg[abs(petrale_om_rep$endgrowth$Len_Mat - 0.6) < 0.05],
+        'yrs')
+om_table['Imputed age near 60\\% maturity', c('p.est', 'c.est')] <- 'Fixed'
 
-om_table['Imputed age at 50% survey selectivity', 'c.value'] <- cod_om_rep$ageselex |>
+om_table['Imputed age at 50\\% survey selectivity', 'c.value'] <- cod_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet == 2, Yr == -2) |> 
   select(-Factor, -(Yr:Label)) |>
   tidyr::pivot_longer(cols = -Fleet, names_to = 'Age', values_to = 'Selectivity') |> 
@@ -261,7 +278,7 @@ om_table['Imputed age at 50% survey selectivity', 'c.value'] <- cod_om_rep$agese
   filter(distance_0.5 == min(distance_0.5)) |>
   pull(Age) |>
   paste('yrs')
-om_table['Imputed age at 50% survey selectivity', 'p.value'] <- petrale_om_rep$ageselex |>
+om_table['Imputed age at 50\\% survey selectivity', 'p.value'] <- petrale_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet == 4, Yr == 1920) |> 
   select(-Factor, -(Yr:Label)) |>
   tidyr::pivot_longer(cols = -Fleet, names_to = 'Age', values_to = 'Selectivity') |> 
@@ -270,51 +287,115 @@ om_table['Imputed age at 50% survey selectivity', 'p.value'] <- petrale_om_rep$a
   filter(distance_0.5 == min(distance_0.5)) |>
   pull(Age) |>
   paste('yrs')
-om_table['Imputed age at 50% survey selectivity', c('c.est', 'p.est')] <- 'Estimated'
+om_table['Imputed age at 50\\% survey selectivity', c('c.est', 'p.est')] <- 'Estimated'
 
 om_table['Adult survey catchability', 'c.value'] <- exp(cod_ctl$Q_parms['LnQ_base_Survey(2)', 'INIT'])
 om_table['Adult survey catchability', 'p.value'] <- round(exp(petrale_ctl$Q_parms['LnQ_base_WCGBTS(4)', 'INIT']), 2)
 om_table['Adult survey catchability', 'p.est'] <- 'Float'
 
 rownames(om_table) <- NULL
-
 om_table |>
-  # `names<-`(c('Parameter', 'Cod\\nValue', 'Cod\\nTreatment', 'Petrale\\nValue', 'Petrale\\nTreatment')) |>
-  # gt::gt() |>
-  # gt::cols_label(c.value = 'Value', c.est = 'Treatment', p.value = 'Value', p.est = 'Treatment') |>
-  # gt::tab_spanner('Atlantic cod', columns = c(c.value, c.est)) |>
-  # gt::tab_spanner('Petrale sole', columns = c(p.value, p.est)) 
-
-  # knitr::kable() 
-# kableExtra::add_header_above(c(' ' = 1, 'Atlantic cod' = 2, 'Petrale sole' = 2))
-  flextable::flextable() |>
-  flextable::compose(j = 'Parameter', 
-                     value = flextable::as_paragraph(
-                       Parameter, ' (', 
-                       flextable::as_equation(par_symb),
-                       ')')
-                     ) |>
-  flextable::compose(j = 'Parameter', i = 12,
-                     value = flextable::as_paragraph(Parameter)) |>
-  flextable::compose(j = c('c.value', 'p.value'), i = 4,
-                     value = flextable::as_paragraph(., flextable::as_sup('-1')), 
-                     use_dot = TRUE) |>
-  flextable::delete_columns(j = 'par_symb') |>
-  flextable::set_header_labels(c.value = 'Value',
-                               c.est = 'Treatment',
-                               p.value = 'Value',
-                               p.est = 'Treatment') |>
-  flextable::add_header_row(values = c(' ', 'Atlantic cod', 'Petrale sole'), colwidths = c(1, 2, 2)) |>
-  flextable::set_table_properties(width = 1, layout = 'autofit') |>
-  flextable::fontsize(size = 10, part = 'all')
+# 1. Data transformation using dplyr and stringr
+  mutate(
+    # Combine Parameter and Symbol with pattern "{1} ({2})"
+    Parameter = paste0(Parameter, " (", par_symb, ")"),
+    
+    # Remove empty parentheses " ()"
+    Parameter = stringr::str_remove(Parameter, " \\(\\)"),
+    
+    # Apply superscript -1 to row 4 of the value columns
+    # Natural mortality is row 4
+    dplyr::across(
+      .cols = c(c.value, p.value),
+      .fns = ~ if_else(row_number() == 4, paste0(.x, "$^{-1}$"), .x)
+    )
+  ) |>
+  select(-par_symb) |>
+# 2. Render with kableExtra
+  kableExtra::kbl(
+    format = "latex",
+    booktabs = TRUE,
+    escape = FALSE,        # Crucial: allows LaTeX math ($h$, $\sigma_R$, etc.)
+    align = "l",
+    caption = "Operating model parameters and their treatment in estimation models",
+    col.names = c("Parameter", "Value", "Treatment", "Value", "Treatment")
+  ) |>
+  kableExtra::kable_styling(
+    latex_options = c("HOLD_position"), # Forces the table to stay exactly "here" [H]
+    font_size = 10,
+    full_width = TRUE
+  ) |>
+  kableExtra::add_header_above(c(" " = 1, "Atlantic cod" = 2, "Petrale sole" = 2))
 ```
 
+```{r}
+#| label: petrale-table
+
+petrale_em <- SS_read('simulations/petrale/no.ind/1/em')
+petrale_age_smry <- petrale_em$dat$agecomp |>
+  # collapse CAAL sample sizes
+  group_by(FltSvy, Yr) |> 
+  summarise(Nsamp = sum(Nsamp)) |>
+  # three sporadic years of data for fleet 2 before 2003
+  filter(Yr >= 2003 | FltSvy != 2) |>
+  # add zeros for missing years
+  full_join(data.frame(Yr = 2003:2022, FltSvy = 2)) |>
+  tidyr::replace_na(list(Nsamp = 0)) |> 
+  # fleet 1 data collection rates increased ~2008
+  mutate(flt_grp = paste(FltSvy, ifelse(FltSvy == 1 & Yr > 2008, 'late', ''))) |> 
+  ungroup() |>
+  # count up and summarize sampling
+  group_by(flt_grp) |> 
+  summarise(Nsamp = round(mean(Nsamp), 0), 
+            min_yr = min(Yr) - 1922, 
+            max_yr = max(Yr) - 1922,
+            Fleet = first(FltSvy)) |>
+  mutate(tbl_txt = glue::glue('{Nsamp} average ages from year {min_yr} to {max_yr}'),
+         Type = 'Age')
+
+petrale_len_smry <- petrale_em$dat$lencomp |> 
+  # sporadic and very low sampling effort before these years
+  filter(Yr > 1967 | FltSvy != 1,
+         Yr > 1950 | FltSvy != 2) |>
+  # sampling gaps and changes in sampling effort
+  mutate(flt_grp = paste(FltSvy, ifelse(FltSvy == 1 & Yr > 2002, 'late', '')),
+         flt_grp = paste(flt_grp, ifelse(FltSvy == 2 & Yr > 1993, 'late', ''))) |> 
+  # count up and summarize sampling
+  group_by(flt_grp) |>
+  summarise(Nsamp = round(mean(Nsamp), 0), 
+            min_yr = min(Yr) - 1922, 
+            max_yr = max(Yr) - 1922,
+            Fleet = first(FltSvy)) |>  
+  mutate(tbl_txt = glue::glue('{Nsamp} average lengths from year {min_yr} to {max_yr}'),
+         Type = 'Length')
+
+bind_rows(petrale_age_smry, petrale_len_smry) |>
+  mutate(Fleet = case_when(Fleet == 1 ~ 'Fishery1',
+                           Fleet == 2 ~ 'Fishery2',
+                           TRUE ~ 'Survey'),
+         Type = ifelse(Fleet == 'Survey' & Type == 'Age', 'Age-at-length', Type)) |>
+  group_by(Fleet, Type) |>
+  summarise(Description = stringr::str_flatten(tbl_txt, collapse = ' and ')) |>
+  bind_rows(tibble(Fleet = 'Survey', Type = 'Index', 
+                   Description = 'Every three years from year 58 to 79 and annually from year 81 to 100')) |>
+  kableExtra::kbl(format = 'latex',
+                  caption = 'Summary of sampling effort in the petrale model. Note that survey composition data is only sampled in years with survey index data.', 
+                  booktabs = TRUE) |>
+  kableExtra::column_spec(3, width = '3.5in')
+```
 
 # Figures
 
 ```{r}
+#| label: fig-schematic
+#| fig-cap: "Schematic of simulation-estimation procedure. This is repeated for the operating models for both life histories (petrale and cod)."
+
+knitr::include_graphics('figs/simulation_schematic.png', dpi = 300)
+```
+
+```{r}
 #| label: fig-selex
-#| fig-cap: "Size selectivity and imputed age selectivity in the Atlantic cod (a, b) and Petrale sole (c, d) operating models. Note that Fishery1 age selectivity on Petrale sole never reaches 1. This is because the length selectivity reaches 1 at lengths larger than the mean maximum length. However, the model does include individuals larger than the mean maximum length due to growth variability."
+#| fig-cap: "Size selectivity and imputed age selectivity in the Atlantic cod (a, b) and petrale sole (c, d) operating models. Note that Fishery1 age selectivity on petrale sole never reaches 1. This is because the length selectivity reaches 1 at lengths larger than the mean maximum length. However, the model does include individuals larger than the mean maximum length due to growth variability."
 cod_age_selex <- cod_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet != 3, Yr == -2) |> # fleet 3 = env, any year will do
   select(-Factor, -(Yr:Label)) |>
@@ -323,10 +404,10 @@ cod_age_selex <- cod_om_rep$ageselex |>
          Fleet = ifelse(Fleet == 1, 'Fishery', 'Survey')) |>
   ggplot() +
   geom_line(aes(x = Age, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
-  labs(x = 'Age (yrs)') +
-  theme(legend.position = 'none') +
+  labs(x = 'Age (yrs)', col = 'Fleet') +
   scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5) +
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
 
 cod_size_selex <- cod_om_rep$sizeselex |> 
   filter(Factor == 'Lsel', Yr == -2, Fleet != 3) |>
@@ -337,9 +418,9 @@ cod_size_selex <- cod_om_rep$sizeselex |>
   ggplot() +
   geom_line(aes(x = Length, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Length (cm)', col = 'Fleet') +
+  theme(legend.position = 'none') +
   scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5) +
-  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
 
 petrale_age_selex <- petrale_om_rep$ageselex |>
   filter(Factor == 'Asel2', Fleet != 3, Fleet != 5, Yr == 1920) |> # fleet 3: triennial, fleet 5: env
@@ -352,9 +433,9 @@ petrale_age_selex <- petrale_om_rep$ageselex |>
   ggplot() +
   geom_line(aes(x = Age, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Age (yrs)', col = 'Fleet') +
-  theme(legend.position = 'none') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)) +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[c(2,3,1)]) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(d)', hjust = -0.5, vjust = 1.5) +
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
 
 petrale_size_selex <- petrale_om_rep$sizeselex |> 
   filter(Factor == 'Lsel', Fleet != 3, Fleet != 5, Yr == 1920) |> # fleet 3: triennial, fleet 5: env
@@ -367,23 +448,23 @@ petrale_size_selex <- petrale_om_rep$sizeselex |>
   ggplot() +
   geom_line(aes(x = Length, y = Selectivity, col = factor(Fleet), group = factor(Fleet))) +
   labs(x = 'Length (cm)', col = 'Fleet') +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)) +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(d)', hjust = -0.5, vjust = 1.5) +
-  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+  theme(legend.position = 'none') +
+  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[c(2,3,1)]) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
 
 cod_title <- cowplot::ggdraw() + 
-  cowplot::draw_label("Atlantic cod selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
+  cowplot::draw_label("Cod selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
   theme(plot.margin = margin(0, 0, 0, 7))
 
 petrale_title <- cowplot::ggdraw() + 
-  cowplot::draw_label("Petrale sole selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
+  cowplot::draw_label("Petrale selectivity", x = 0, hjust = 0, size = 12, color = 'gray30') +
   theme(plot.margin = margin(0, 0, 0, 7))
 
 cowplot::plot_grid(
   cod_title,
-  cowplot::plot_grid(cod_age_selex, cod_size_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
+  cowplot::plot_grid(cod_size_selex, cod_age_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
   petrale_title,
-  cowplot::plot_grid(petrale_age_selex, petrale_size_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
+  cowplot::plot_grid(petrale_size_selex, petrale_age_selex, ncol = 2, rel_widths = c(0.45, 0.55)),
   nrow = 4, rel_heights = c(1, 6, 1, 6)
 )
 
@@ -391,7 +472,7 @@ cowplot::plot_grid(
 
 ```{r}
 #| label: fig-exploit
-#| fig-cap: "Exploitation rates for the Petrale sole operating model (a), and example catch time series for both operating models (b, c). Exploitation rates for Atlantic cod are assumed constant at 0.1052 yr^-1^ when they are non-zero."
+#| fig-cap: "Fishing mortality rates for the petrale sole operating model (a), and example catch time series for both operating models (b, c). Exploitation rates for Atlantic cod are assumed constant at 0.1052 yr^-1^ when they are non-zero."
 
 exploitation <- petrale_om_rep$exploitation |>
   select(Yr, North, South) |>
@@ -401,7 +482,7 @@ exploitation <- petrale_om_rep$exploitation |>
          Yr = Yr - 1922) |>
   ggplot() +
   geom_line(aes(x = Yr, y = exploitation, col = Fleet, group = Fleet)) +
-  labs(x = 'Year', y = expression(paste('Exploitation rate (', yr^{-1}, ')'))) +
+  labs(x = 'Year', y = expression(paste('Fishing mortality rate (', yr^{-1}, ')'))) +
   scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
 
@@ -450,7 +531,7 @@ dq |>
   ggplot() +
   annotate(geom = 'rect', xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf, fill = 'gray90') +
   geom_line(aes(x = year, y = Value.Bratio, col = Model, lty = Model)) +
-  scale_color_manual(values = c('gray50', LaCroixColoR::lacroix_palette('Orange', 6))) +
+  scale_color_manual(values = c('gray50', rev(pal))) +
   labs(x = 'Year', y = 'Relative spawning output') +
   # scale_y_continuous(labels = NULL) +
   scale_linetype_manual(values = lty_vec) +
@@ -462,7 +543,7 @@ dq |>
 ```{r}
 #| warning: false
 #| label: fig-term-yr-rec
-#| fig-cap: "Relative error of the log of recruitment in the terminal year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model."
+#| fig-cap: "Relative error of the log of recruitment in the terminal year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model. Values greater than 0 indicate the estimation model is bias high (overestimating)."
 ts |> 
   filter(year == 100 | year == 2022) |>
   tidyr::pivot_wider(names_from = model_run, values_from = Recruit_0, 
@@ -473,8 +554,7 @@ ts |>
   group_by(scenario, nyr) |>
   ggplot() +
   geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr),
-                  # alpha = nyr, 
-                  group = paste(nyr, scenario)), linewidth = 0.5) + #factor(nyr, levels = c(30, 10)))) +
+                  group = paste(nyr, scenario)), linewidth = 0.5) + 
   geom_hline(yintercept = 0, color = 'black') +
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   labs(x = 'Index SE', y = 'Relative error of\nlog(terminal year recruitment)', 
@@ -500,7 +580,7 @@ ts |>
   ggplot() +
   geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr),
                   # alpha = nyr, 
-                  group = paste(nyr, scenario))) + #factor(nyr, levels = c(30, 10)))) +
+                  group = paste(nyr, scenario))) + 
   geom_hline(yintercept = 0, color = 'black') +
   # scale_fill_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
   labs(x = 'Index SE', y = 'Relative error of\nlog(terminal year recruitment)', 
@@ -526,7 +606,7 @@ p.high_sigR <- scalar |>
          rel_err = (em - om)/om) |> 
   group_by(scenario, species, nyr) |>
   ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr, levels = c(30, 10)))) +
+  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
   geom_hline(yintercept = 0, color = 'black') +
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   labs(x = 'Index SE', y = 'Relative error of log of unfished recruitment', 
@@ -547,7 +627,7 @@ p.low_sigR <- scalar |>
          rel_err = (em - om)/om) |> 
   group_by(scenario, species, nyr) |>
   ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr, levels = c(30, 10)))) +
+  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
   geom_hline(yintercept = 0, color = 'black') +
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   labs(x = 'Index SE', y = '',
@@ -578,7 +658,7 @@ cowplot::plot_grid(
 ```{r}
 #| warning: false
 #| label: fig-M
-#| fig-cap: "Relative error of the estimate of natural mortality in the Petrale sole model. Natural mortality is fixed at its true value in the cod model. Index is included in the final 10 or 30 years of the estimation model"
+#| fig-cap: "Relative error of the estimate of natural mortality in the petrale sole model. Natural mortality is fixed at its true value in the cod model. Index is included in the final 10 or 30 years of the estimation model"
 scalar |> 
   filter(species == 'Petrale') |> 
   tidyr::pivot_wider(names_from = model_run, values_from = NatM_uniform_Fem_GP_1, 
@@ -588,7 +668,7 @@ scalar |>
          sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]')) |>
   group_by(scenario) |>
   ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr, levels = c(30, 10)))) +
+  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
   geom_hline(yintercept = 0, color = 'black') +
   scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
   facet_wrap(~ sigR, labeller = label_parsed) +
@@ -604,7 +684,7 @@ scalar |>
 
 ```{r}
 #| label: fig-mare-ts
-#| fig-cap: "Mean absolute relative error of spawning depletion (spawning output relative to unfished) at different levels of recruitment index uncertainty. Panels a, c, e, and g are time series that include the final 15 years of the hindcast period (white) and the full 12 years of the forecast period (gray), only for models with 10-year recruitment indices. Panels b, d, f, and h include the mean absolute relative error (points) and 90% simulation intervals of absolute relative error (vertical lines) at the beginning and and end of the forecast period, for both the 10-year (solid) and 30-year (dashed) index. Note that y-axes are only consistent within a column."
+#| fig-cap: "Mean absolute relative error of relative spawning output at different levels of recruitment index uncertainty. Panels a, c, e, and g are time series that include the final 15 years of the hindcast period (white) and the full 12 years of the forecast period (gray), only for models with 10-year recruitment indices. Panels b, d, f, and h include the mean absolute relative error (points) and 90% simulation intervals of absolute relative error (vertical lines) at the beginning and and end of the forecast period, for both the 10-year (solid) and 30-year (dashed) index. Note that y-axes are only consistent within a column."
 #| warning: false
 #| fig-width: 9
 #| fig-height: 7
@@ -617,7 +697,7 @@ mare_ts <- dq_long |>
   annotate("rect", xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf,
            fill = "gray90") +
   geom_line(aes(x = year, y = mare, col = scenario, group = paste(scenario, nyr))) +
-  scale_color_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
+  scale_color_manual(values = pal) +
   labs(x = 'Year') +
   ylim(0, NA) +
   facet_wrap(~ species, nrow = 2) +
@@ -625,7 +705,7 @@ mare_ts <- dq_long |>
   NULL 
 
 mare_ts_high <- mare_ts + 
-  ylab('Mean absolute relative error\nof spawning depletion') + 
+  ylab('Mean absolute relative error\nof relative spawning output') + 
   geom_text(aes(label = labs), x = -Inf, y = Inf, hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(a)', '(e)'), species = c('Cod', 'Petrale'), sigR = 'high'))
 mare_ts_high@data <- filter(mare_ts@data, sigR == 'high')
 mare_ts_low <- mare_ts + 
@@ -645,7 +725,7 @@ mare_pts <- dq_long |>
   guides(x = legendry::guide_axis_nested(key = ':', title = NULL, 
                                          levels_text = list(element_blank(), element_text())),
          col = guide_legend(reverse = TRUE)) +
-  scale_color_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
+  scale_color_manual(values = pal) +
   theme(legend.position = 'none', strip.text = element_blank()) +
   labs(y = '', col = 'Index SE', linetype = 'Number of\nyears of index')
 

@@ -24,6 +24,8 @@ inst/extdata/models/retrospectives/*
 *.png
 *.exe
 *.docx
+*.pdf
+figs/*
 simulations/*/*/*.csv
 # ss3 files
 simulations/*/*/*
