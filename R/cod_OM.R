@@ -5,6 +5,7 @@ library(r4ss)
 library(ss3sim)
 library(here)
 source('R/add_fleet.R')
+source('R/functions.R')
 
 # set ss3 executable location
 if(Sys.info()['sysname'] == 'Linux'){
@@ -150,4 +151,33 @@ sim_res <- get_results_all(directory = sim_dir,
                            overwrite_files = TRUE)
 tictoc::toc()
 
+# High sigma R worse index ------------------------------------------------
+
+sim_dir <- file.path('simulations', 'cod_high_sigR_high_sigInd')
+# unlink(sim_dir, recursive = TRUE)
+dir.create(sim_dir)
+file.copy(from = paste0('simulations/cod_high_sigR/', c('base', 'no.ind')),
+          to = sim_dir, recursive = TRUE)
+
+sd_seq <- c(0.05, 0.1, 0.2, 0.3, 0.5) * 2
+nsim <- 100
+
+plan(multisession, workers = ncore-1)
+
+run_index_sims(sim_dir = sim_dir,
+               rec_flt_ind = rec_flt_ind, 
+               nsim = nsim, 
+               do_bias = TRUE, 
+               sd_seq = sd_seq,
+               rec_ind_len = 10) # don't bother with 30 yrs for this
+
+tictoc::tic()
+plan(sequential, split = TRUE)
+
+scenario_names <- paste(sd_seq, 10, sep = "_")
+
+sim_res <- get_results_all(directory = sim_dir, 
+                           user_scenarios = scenario_names, # not reading in no.ind
+                           overwrite_files = TRUE)
+tictoc::toc()
 
