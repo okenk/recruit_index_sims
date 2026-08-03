@@ -28,12 +28,20 @@ inst/extdata/models/retrospectives/*
 figs/*
 simulations/*/*/*.csv
 # ss3 files
-simulations/*/*/*
+simulations/*/*/*/*
 !simulations/*/no.ind/1/
+!simulations/cod/*_30/46/em
+!simulations/petrale/*_30/30/em
+!simulations/cod/no.ind/46/om
+!simulations/petrale/no.ind/30/om
+simulations/*/*/*/*/bias_00
+*/bias
+
 ss3.b*
 ss3.log
 ss3.p*
 ss3.r*
+ss3.eva
 *.ss_new
 varssave.tmp
 runnumber.ss
@@ -44,3 +52,5 @@ console.output.txt
 ss_summary.sso
 gradfil*.tmp
 cmpdiff.tmp
+*posterior*
+SIS*
