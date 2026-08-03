@@ -1,19 +1,19 @@
 2 -logL: 2154.91 SSB(Vir_Start_End): 3.79382e+09 3.20107e+09 2.48894e+09
 2 Files: ss3.dat em.ctl
-2 N_iter: 471 runtime(sec): 54 starttime: Fri Aug 22 16:06:48 2025
+2 N_iter: 471 runtime(sec): 73 starttime: Fri Jul 31 08:02:34 2026
 2#V3.30.22.1;_safe;_compile_date:_Jan 30 2024;_Stock_Synthesis_by_Richard_Methot_(NOAA)_using_ADMB_13.1
 2 F_Method: 3 Retro_YR: 100 Forecast_Type: 2 MSY_Type: 2
 2 Comment S_1 #C starter file written by R function SS_writestarter
 2 Comment S_2 #C rerun model to get more complete formatting in starter.ss_new
 2 Comment S_3 #C should work with SS version: 3.30
-2 Comment S_4 #C file write time: 2025-08-22 16:04:22.82797
+2 Comment S_4 #C file write time: 2026-07-31 07:58:42.7267
 2 Comment D_1 #C North Sea/Skagerrak/Eastern Channel Cod
 2 Comment C_1 #C file created using the SS_writectl function in the R package r4ss
 2 Comment C_2 #C file write time: 2024-03-03 03:44:10.667825
 2 Comment F_1 #C forecast file written by R function SS_writeforecast
 2 Comment F_2 #C rerun model to get more complete formatting in forecast.ss_new
 2 Comment F_3 #C should work with SS version: 3.3
-2 Comment F_4 #C file write time: 2025-08-22 16:04:22.882127
+2 Comment F_4 #C file write time: 2026-07-31 07:58:42.825229
 2 Like_Emph Total 1 
 2 Like_Value Total 2154.91
 2 Like_Emph Indices All  0 1 0
