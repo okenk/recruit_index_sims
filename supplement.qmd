@@ -1,0 +1,355 @@
+---
+title: ""
+format: 
+  pdf: 
+    fig-pos: 'H'
+    fig-width: 6
+    fig-height: 4.8
+    fig-dpi: 300
+header-includes: |
+  \renewcommand{\thefigure}{S\arabic{figure}}
+  \renewcommand{\thetable}{S\arabic{table}}
+---
+
+# Supplement for "Environmental recruitment indices can improve forecasts but also bias estimates of population productivity in integrated stock assessment models"
+
+<!-- this vspace is just to get things to float correctly -->
+\vspace{0.1mm}
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+#| echo: false
+#| keep-md: true
+
+knitr::opts_chunk$set(echo = FALSE, dpi = 500, message = FALSE)
+
+library(r4ss)
+library(here)
+library(ggplot2)
+library(dplyr)
+
+cod_om <- SS_read(here('inst/extdata/models/cod/om'))
+cod_ctl <- cod_om$ctl
+
+petrale_om <- SS_read(here('inst/extdata/models/petrale/om'))
+petrale_ctl <- petrale_om$ctl
+
+cod_om_rep <- SS_output(here('simulations/cod/no.ind/1/om'), verbose = FALSE, printstats = FALSE)
+petrale_om_rep <- SS_output(here('simulations/petrale/no.ind/1/om'), verbose = FALSE, printstats = FALSE)
+
+theme_sleek <- function (base_size = 11, base_family = "") 
+{
+    half_line <- base_size/2
+    theme_light(base_size = base_size, base_family = base_family) + 
+        theme(panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(), 
+              axis.ticks.length = unit(half_line/2.2, "pt"), 
+              strip.background = element_rect(fill = NA, colour = NA), 
+              axis.text = element_text(colour = "grey30"), 
+              axis.title = element_text(colour = "grey30"), 
+              legend.title = element_text(colour = "grey30", size = rel(0.9)), 
+              panel.border = element_rect(fill = NA, colour = "grey70", linewidth = 1), 
+              legend.key.size = unit(0.9, "lines"), 
+              legend.text = element_text(size = rel(0.7), colour = "grey30"), 
+              legend.key = element_rect(colour = NA, fill = NA), 
+              legend.background = element_rect(colour = NA, fill = NA), 
+              plot.title = element_text(colour = "grey30", size = rel(1)), 
+              plot.subtitle = element_text(colour = "grey30", size = rel(0.85)), 
+              strip.text = element_text(colour = "grey30"))
+}
+
+theme_set(theme_sleek())
+
+pal <- c(rev(LaCroixColoR::lacroix_palette('Orange', 5)), '#EE2C2C')
+
+read_sim_output <- function(filepath, max_grad_criteria = 0.1) {
+  scalar <- file.path(filepath, 'ss3sim_scalar.csv') |>
+    readr::read_csv() |>
+    mutate(scenario = ifelse(scenario == 'no.ind', 'No index_10', scenario)) |>
+    tidyr::separate_wider_delim(cols = scenario, delim = "_", names = c('scenario', 'nyr')) |>
+    mutate(nyr = as.numeric(nyr)) %>%
+    bind_rows({filter(., scenario == 'No index') |> 
+        mutate(nyr = 30)})
+  
+  bad_sims <- scalar |>
+    filter(max_grad > max_grad_criteria) |>
+    select(iteration, scenario, nyr)
+  
+  scalar_filtered <- anti_join(scalar, bad_sims)
+  
+  ts <- file.path(filepath, 'ss3sim_ts.csv') |>
+    readr::read_csv() |>
+    mutate(scenario = ifelse(scenario == 'no.ind', 'No index_10', scenario)) |>
+    tidyr::separate_wider_delim(cols = scenario, delim = "_", names = c('scenario', 'nyr')) |>
+    mutate(nyr = as.numeric(nyr)) %>%
+    bind_rows({filter(., scenario == 'No index') |> # replicate no index rows for both index lengths (for plotting ease)
+        mutate(nyr = 30)}) |>
+    anti_join(bad_sims)
+  
+  dq <- file.path(filepath, 'ss3sim_dq.csv') |>
+    readr::read_csv() |>
+    mutate(scenario = ifelse(scenario == 'no.ind', 'No index_10', scenario)) |>
+    tidyr::separate_wider_delim(cols = scenario, delim = "_", names = c('scenario', 'nyr')) |>
+    mutate(nyr = as.numeric(nyr)) %>%
+    bind_rows({filter(., scenario == 'No index') |> 
+        mutate(nyr = 30)}) |>
+    anti_join(bad_sims)
+  
+  message(paste0(nrow(bad_sims), 
+                 ' simulations were filtered out of ', 
+                 filepath, 
+                 ' due to exceeding the maximum gradient criterion of ',
+                 max_grad_criteria,
+                 '. They are:'))
+  
+  return(list(ts = ts, scalar = scalar_filtered, dq = dq, bad_sims = bad_sims))
+}
+
+sim_names <- c('cod', 
+               'cod_high_sigR_high_sigInd',
+               'petrale',
+               'petrale_high_sigR_high_sigInd',
+               NULL
+               )
+big_res <- here::here('simulations', sim_names) |>
+  `names<-`(sim_names) |>
+  purrr::map(read_sim_output)
+
+scalar <- purrr::map(big_res, purrr::pluck, 'scalar') |>
+  bind_rows(.id = 'ID') |>
+  mutate(species = stringr::str_to_title(stringr::str_extract(ID, '^[:alpha:]+')), # any number of letters starting at beginning
+         sigR = ifelse(grepl('_high_sigR', ID), 'high', 'low'),
+         sigR_num = ifelse(species == 'cod', 0.4 * (1 + (sigR == 'high')), 0.5 * (1 + (sigR == 'high'))),
+         sigRatio = as.numeric(scenario) / sigR_num) |> # warning is about no index scenario
+         # + 1) * # = 1 if low, 2 if high
+           # ifelse(species == 'Cod', 0.4, 0.5)) |> # these are the baseline sigma Rs for each species
+  select(-ID)
+
+dq <- purrr::map(big_res, purrr::pluck, 'dq') |>
+  bind_rows(.id = 'ID') |>
+  mutate(species = stringr::str_to_title(stringr::str_extract(ID, '^[:alpha:]+')), # any number of letters starting at beginning
+         sigR = ifelse(grepl('_high_sigR', ID), 'high', 'low'),
+         indexSE = ifelse(grepl('index_se', ID), 'high', 'low')) |> 
+         # + 1) * # = 1 if low, 2 if high
+           # ifelse(species == 'Cod', 0.4, 0.5)) |> # these are the baseline sigma Rs for each species
+  select(-ID)
+
+dq_long <- dq |>
+  tidyr::pivot_longer(Value.SSB:Value.lnSPB) |>
+  tidyr::pivot_wider(names_from = model_run, values_from = value, 
+                     id_cols = c(iteration, scenario, year, name, species, nyr, sigR)) |>
+  filter(!is.na(em), !is.na(om)) |> 
+  mutate(re = (em-om)/om) |>
+  group_by(species, nyr, name, scenario, year, sigR) |> 
+  summarise(mare = mean(abs(re)),
+            mre = mean(re),
+            mare_bounds = tibble::as_tibble_row(quantile(abs(re), probs = c(0.05, 0.95)))) |>
+  mutate(year = ifelse(species == 'Petrale', year - petrale_om$dat$styr + 1, year))
+
+bad_sims <- purrr::map(big_res, purrr::pluck, 'bad_sims') |>
+  bind_rows(.id = 'ID')
+```
+
+```{r}
+#| label: fig-exploit
+#| fig-cap: "Fishing mortality rates for the operating models (a), and example catch time series for a single iteration of both operating models (b, c)."
+
+exploitation <- petrale_om_rep$exploitation |>
+  select(Yr, North, South) |>
+  filter(Yr <= 2034) |>
+  tidyr::pivot_longer(cols = -Yr, names_to = 'Fleet', values_to = 'exploitation') |>
+  mutate(Fleet = ifelse(Fleet == 'North', 'Petrale fishery1', 'Petrale fishery2'),
+         Yr = Yr - 1922) |>
+  bind_rows(tibble(Yr = c(0, 25, 26, 112), Fleet = 'Cod', exploitation = c(0, 0, 0.1052, 0.1052))) |> 
+  ggplot() +
+  geom_line(aes(x = Yr, y = exploitation, col = Fleet, group = Fleet)) +
+  labs(x = 'Year', y = expression(paste('Fishing mortality rate (', yr^{-1}, ')'))) +
+  scale_color_manual(values = c('#595959FF', inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])) +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5) 
+
+petrale_catch <- petrale_om_rep$catch |>
+  filter(dead_bio > 0) |>
+  mutate(Yr = Yr - 1922,
+         Fleet_Name = ifelse(Fleet_Name == 'North', 'Fishery1', 'Fishery2')) |>
+  ggplot() +
+  geom_col(aes(x = Yr, y = dead_bio, fill = Fleet_Name)) +
+  labs(x = 'Year', y = 'Petrale catch (mt)', fill = 'Fleet') +
+  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  theme(legend.position = 'none') +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
+
+
+cod_catch <- cod_om_rep$catch |> 
+  ggplot() +
+  geom_col(aes(x = Yr, y = dead_bio)) +
+  labs(x = 'Year', y = 'Cod catch (mt)') +
+  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5)
+
+cowplot::plot_grid(
+  exploitation,
+  cowplot::plot_grid(cod_catch, petrale_catch, ncol = 2),
+  nrow = 2
+)
+
+```
+
+```{r}
+#| label: fig-data-avail
+#| fig-cap: "Data availability for the petrale and cod estimation models"
+#| message: FALSE
+
+cod_em_rep <- SS_output('simulations/cod/0.05_30/46/em', verbose = FALSE, printstats = FALSE)
+petrale_em_rep <- SS_output('simulations/petrale/0.05_30/30/em', verbose = FALSE, printstats = FALSE)
+
+par(mfrow = c(1,2))
+SSplotData(cod_em_rep, subplots = 2, margins = c(5.1, 0.5, 2.1, 5.1))
+mtext('Cod')
+SSplotData(petrale_em_rep, subplots = 2, margins = c(5.1, 0.5, 2.1, 5.1), fleetnames = c('Fishery1', 'Fishery2', '', 'Survey', 'env'))
+mtext('Petrale')
+```
+```{r}
+#| label: fig-MSY
+#| fig-cap: "Relative error of the estimate of maximum sustainable yield (MSY). Index is included in the final 10 or 30 years of the estimation model. Note different y-axis scales. Red points are medians of the distributions."
+p.high_sigR <- scalar |> 
+  filter(sigR == 'high') |>
+  tidyr::pivot_wider(names_from = model_run, values_from = TotYield_MSY, 
+                     id_cols = c(iteration, scenario, species, nyr, sigR)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
+  mutate(are = abs((em-om)/om),
+         rel_err = (em - om)/om,
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |>  
+  group_by(scenario, species, nyr) |>
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
+  geom_hline(yintercept = 0, color = 'black') +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
+  labs(x = 'Index SE', y = 'Relative error of MSY', 
+       title = parse(text = '"High"~sigma[R]')) +
+  facet_wrap(~ species, scales = 'free_y', nrow = 2) +
+  theme(legend.position = 'none',
+        strip.text = element_blank(), 
+        plot.title = element_text(hjust = 0.5, size = rel(0.8)),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.margin = margin(r = 0))
+
+p.low_sigR <- scalar |> 
+  filter(sigR == 'low') |>
+  tidyr::pivot_wider(names_from = model_run, values_from = TotYield_MSY, 
+                     id_cols = c(iteration, scenario, species, nyr, sigR)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
+  mutate(are = abs((em-om)/om),
+         rel_err = (em - om)/om,
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |>  
+  group_by(scenario, species, nyr) |>
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
+  geom_hline(yintercept = 0, color = 'black') +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
+  labs(x = 'Index SE', y = '',
+       fill = 'Number of\nyrs of index',
+       title = parse(text = '"Low"~sigma[R]')) +
+  facet_wrap(~ species, scales = 'free_y', nrow = 2, strip.position = 'right') +
+  theme(plot.title = element_text(hjust = 0.5, size = rel(0.8)),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        plot.margin = margin(l = 0))
+
+x.title <- cowplot::ggdraw() + 
+  cowplot::draw_label("Index SE", x = 0.45, hjust = 0.5, color = 'grey30', vjust = 0, size = 11)
+
+legend <- cowplot::get_legend(p.low_sigR +
+                              theme(legend.box.margin = margin(0, 0, 0, 12)))
+
+cowplot::plot_grid(
+  cowplot::plot_grid(p.high_sigR,
+                     p.low_sigR + theme(legend.position = 'none'),
+                     legend,
+                     nrow = 1, rel_widths = c(1, 1, 0.35)),
+  x.title,
+  nrow = 2, rel_heights = c(1, 0.1))
+```
+```{r}
+#| label: fig-r0
+#| fig-cap: "Relative error of the estimate of the log of unfished recruitment across ratios of index:recruitment variability. Yellow distributions have double the recruitment variability and recruitment index standard error of the corresponding teal distribution. Red points are medians of the distributions."
+
+scalar |> 
+  filter(nyr == 10, !is.na(sigRatio)) |>
+  tidyr::pivot_wider(names_from = model_run, values_from = SR_LN_R0, 
+                     id_cols = c(iteration, sigRatio, species, nyr, sigR)) |>
+  mutate(are = abs((em-om)/om),
+         rel_err = (em - om)/om) |>  
+  # group_by(scenario, species, nyr) |>
+  ggplot(aes(x = as.factor(sigRatio), y = rel_err, fill = sigR, group = paste(sigR, sigRatio))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
+  geom_hline(yintercept = 0, color = 'black') +
+  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  facet_wrap(~species) +
+  labs(x = expression(sigma[I] / sigma[R]),
+       y = expression(paste('Relative error of log(', R[0], ')')),
+       fill = expression(sigma[R])) +
+  theme(legend.position = 'bottom', 
+        legend.direction = 'horizontal')
+```
+
+```{r}
+#| label: fig-M
+#| fig-cap: "Relative error of the estimate of the estimate of natural mortality (petrale only) across ratios of index:recruitment variability. Yellow distributions have double the recruitment variability and recruitment index standard error of the corresponding teal distribution. Red points are medians of the distributions."
+
+scalar |> 
+  filter(nyr == 10, !is.na(sigRatio), species == 'Petrale') |>
+  tidyr::pivot_wider(names_from = model_run, values_from = NatM_uniform_Fem_GP_1, 
+                     id_cols = c(iteration, sigRatio, species, nyr, sigR)) |>
+  mutate(are = abs((em-om)/om),
+         rel_err = (em - om)/om) |>  
+#   group_by(scenario, species, nyr) |>
+  ggplot(aes(x = as.factor(sigRatio), y = rel_err, fill = sigR, group = paste(sigR, sigRatio))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
+  geom_hline(yintercept = 0, color = 'black') +
+  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  labs(x = expression(sigma[I] / sigma[R]),
+       y = 'Relative error of natural mortality',
+       fill = expression(sigma[R]))
+```
+
+```{r}
+#| label: fig-mare-ts
+#| fig-cap: "Mean absolute relative error of relative spawning output at different levels of recruitment index uncertainty for models with 30-year recruitment indices. Time series that include the final 15 years of the hindcast period (white) and the full 12 years of the forecast period (gray). Note that y-axes are only consistent within a column."
+#| warning: false
+#| fig-width: 9
+#| fig-height: 7
+#| out-width: "100%"
+#| dpi: 300
+
+dq_long |>
+  filter(nyr == 30, name == 'Value.SSB', year >= 85) |>
+  mutate(sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]')) |>
+  ggplot() +
+  annotate("rect", xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf,
+           fill = "gray90") +
+  geom_line(aes(x = year, y = mare, col = scenario, group = paste(scenario, nyr))) +
+  scale_color_manual(values = pal) +
+  labs(x = 'Year', y = 'Mean absolute relative error\nof relative spawning output', col = 'Scenario') +
+  expand_limits(y = 0) +
+  facet_grid(sigR ~ species, scales = 'free_y', labeller = label_parsed) +
+  NULL 
+```
+

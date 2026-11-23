@@ -5,16 +5,33 @@ format:
     fig-pos: 'H'
     fig-width: 6
     fig-height: 4.8
-    fig-dpi: 300
+    keep-tex: true
 ---
 
 ```{r}
+#| label: setup
 #| message: false
 #| warning: false
 #| echo: false
 #| keep-md: true
 
-knitr::opts_chunk$set(echo = FALSE, dpi = 500, message = FALSE)
+knitr::opts_chunk$set(echo = FALSE, dpi = 1000, message = FALSE, fig.path = 'figs/', dev = 'png')
+
+fig_counter <- 1
+
+# Override knitr's plot filename generator
+knitr::opts_hooks$set(label = function(options) {
+  options$fig.path <- paste0(options$fig.path, fig_counter, '-')
+  return(options)
+})
+
+# increment counter if there was a plot
+knitr::knit_hooks$set(chunk = function(x, options) {
+  if (options$fig.num > 0) {
+    fig_counter <<- fig_counter + 1
+  }
+  return(x)
+})
 
 library(r4ss)
 library(here)
@@ -43,8 +60,6 @@ theme_sleek <- function (base_size = 11, base_family = "")
 }
 
 theme_set(theme_sleek())
-
-pal <- c(rev(LaCroixColoR::lacroix_palette('Orange', 5)), '#EE2C2C')
 
 cod_om <- SS_read(here('inst/extdata/models/cod/om'))
 cod_ctl <- cod_om$ctl
@@ -169,6 +184,11 @@ stat1 <- dq |>
     values_from = Value.Bratio
   ) |> 
   mutate(diff = `No index` - `0.05`) |> summarize(mean(diff > 0))
+
+pal <- c(rev(LaCroixColoR::lacroix_palette('Orange', 5)), '#EE2C2C')
+lty_vec <- c(2, rep(1, 6)) |>
+  `names<-`(c('Oper. mod.', rev(unique(ts$scenario))))
+
 ```
 
 # Tables
@@ -242,7 +262,7 @@ om_table['CV of length at young age', 'c.value'] <- cod_ctl$MG_parms['CV_young_F
 om_table['CV of length at young age', 'p.value'] <- round(petrale_ctl$MG_parms['CV_young_Fem_GP_1', 'INIT'], 2)
 om_table['CV of length at young age', c('p.est', 'c.est')] <- 'Estimated'
 
-om_table['Old age', 'c.value'] <- '∞'
+om_table['Old age', 'c.value'] <- '→∞'
 om_table['Old age', 'p.value'] <- paste(petrale_ctl$Growth_Age_for_L2, 'yrs')
 om_table['Old age', c('c.est', 'p.est')] <- '-'
 
@@ -388,9 +408,40 @@ bind_rows(petrale_age_smry, petrale_len_smry) |>
 
 ```{r}
 #| label: fig-schematic
-#| fig-cap: "Schematic of simulation-estimation procedure. This is repeated for the operating models for both life histories (petrale and cod)."
+#| fig-width: 8
+#| fig-cap: '(a) Schematic of simulation-estimation procedure and (b) example index for different values of $\sigma_I$. Schematic is repeated for the operating models for both life histories (petrale and cod). Note random number seed for index generation is identical across $\sigma_I$. "Operating model" is the time series of true recruitment deviations.'
 
-knitr::include_graphics('figs/simulation_schematic.png', dpi = 300)
+indices <- file.path(list.dirs(file.path('simulations', 'petrale'), recursive = FALSE), 30, 'em') |>
+  purrr::map(purrr::possibly(\(x) suppressWarnings({
+    inputs <- SS_read(x)
+    filter(inputs$dat$CPUE, index == 5) |>
+      select(year, obs)
+      }), otherwise = NULL)) # possibly is like tryCatch but makes sense
+names(indices) <- list.dirs(file.path('simulations', 'petrale'), full.names = FALSE, recursive = FALSE)
+indices_df <- indices[-6] |>
+  bind_rows(.id = 'Scenario') |>
+  mutate(Scenario = stringr::str_remove(Scenario, '_.*$')) # _ followed by any number of characters until the end
+
+om <- SS_output('simulations/petrale/no.ind/30/om', verbose = FALSE, printstats = FALSE, hidewarn = TRUE)
+plt <- om$recruit |> 
+  filter(Yr %in% indices_df$year) |>
+  select(year = Yr, obs = dev) |>
+  mutate(Scenario = 'Oper. mod.') |>
+  bind_rows(indices_df) |>
+  mutate(Scenario = forcats::fct_rev(Scenario),
+  year = year - petrale_om$dat$styr + 1) |>
+  ggplot() +
+  geom_hline(yintercept = 0, col = 'gray80') +
+  geom_line(aes(x = year, y = obs, col = Scenario, lty = Scenario, linewidth = Scenario)) +
+  scale_color_manual(values = c('gray50', rev(pal)[-1])) +
+  scale_linetype_manual(values = lty_vec) +
+  scale_linewidth_manual(values = 1.5 * lty_vec - 1)+
+  labs(x = 'Year', y = 'Index') +
+  theme(legend.position = 'bottom', legend.direction = 'horizontal')
+
+schematic <- cowplot::ggdraw() + cowplot::draw_image('figs/1-simulation_schematic.png')
+
+cowplot::plot_grid(schematic, plt, ncol = 2, rel_widths = c(1.1, 1), labels = c('(a)', '(b)'), label_fontface = 'plain')
 ```
 
 ```{r}
@@ -471,55 +522,9 @@ cowplot::plot_grid(
 ```
 
 ```{r}
-#| label: fig-exploit
-#| fig-cap: "Fishing mortality rates for the petrale sole operating model (a), and example catch time series for both operating models (b, c). Exploitation rates for Atlantic cod are assumed constant at 0.1052 yr^-1^ when they are non-zero."
-
-exploitation <- petrale_om_rep$exploitation |>
-  select(Yr, North, South) |>
-  filter(Yr <= 2034) |>
-  tidyr::pivot_longer(cols = -Yr, names_to = 'Fleet', values_to = 'exploitation') |>
-  mutate(Fleet = ifelse(Fleet == 'North', 'Fishery1', 'Fishery2'),
-         Yr = Yr - 1922) |>
-  ggplot() +
-  geom_line(aes(x = Yr, y = exploitation, col = Fleet, group = Fleet)) +
-  labs(x = 'Year', y = expression(paste('Fishing mortality rate (', yr^{-1}, ')'))) +
-  scale_color_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(a)', hjust = -0.5, vjust = 1.5)
-
-# could add horizontal line for cod to this figure?
-
-petrale_catch <- petrale_om_rep$catch |>
-  filter(dead_bio > 0) |>
-  mutate(Yr = Yr - 1922,
-         Fleet_Name = ifelse(Fleet_Name == 'North', 'Fishery1', 'Fishery2')) |>
-  ggplot() +
-  geom_col(aes(x = Yr, y = dead_bio, fill = Fleet_Name)) +
-  labs(x = 'Year', y = 'Petrale catch (mt)', fill = 'Fleet') +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  theme(legend.position = 'none') +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(c)', hjust = -0.5, vjust = 1.5)
-
-
-cod_catch <- cod_om_rep$catch |>
-  ggplot() +
-  geom_col(aes(x = Yr, y = dead_bio)) +
-  labs(x = 'Year', y = 'Cod catch (mt)') +
-  annotate(geom = 'text', x = -Inf, y = Inf, label = '(b)', hjust = -0.5, vjust = 1.5)
-
-cowplot::plot_grid(
-  exploitation,
-  cowplot::plot_grid(cod_catch, petrale_catch, ncol = 2),
-  nrow = 2
-)
-
-```
-
-```{r}
 #| warning: false
 #| label: fig-sim-ex
-#| fig-cap: "Example simulations of the operating model (dashed) and estimation models (solid) at different levels of precision of the recruitment index with baseline values for $\\sigma_R$ and recruitment indices for the final ten years (when included). Gray shaded region is the forecast period, where only catch data is provided to the estimation model."
-lty_vec <- c(2, rep(1, 6)) |>
-  `names<-`(c('Oper. mod.', rev(unique(ts$scenario))))
+#| fig-cap: "Example simulations of the operating model (dashed) and estimation models (solid) at different levels of precision of the recruitment index with baseline values for $\\sigma_R$ and recruitment indices for the final ten years (when included). Gray shaded region is the forecast period, where only catch data is provided to the estimation model. Black horizontal line covers the duration of the recruitment index."
 
 # possible: 3, 8, 46, 86
 dq |> 
@@ -531,6 +536,7 @@ dq |>
   ggplot() +
   annotate(geom = 'rect', xmin = 100.5, xmax = 112.5, ymin = -Inf, ymax = Inf, fill = 'gray90') +
   geom_line(aes(x = year, y = Value.Bratio, col = Model, lty = Model)) +
+  geom_segment(x = 90, xend = 100, y = 0.02, yend = 0.02, linewidth = 0.05) +
   scale_color_manual(values = c('gray50', rev(pal))) +
   labs(x = 'Year', y = 'Relative spawning output') +
   # scale_y_continuous(labels = NULL) +
@@ -543,52 +549,65 @@ dq |>
 ```{r}
 #| warning: false
 #| label: fig-term-yr-rec
-#| fig-cap: "Relative error of the log of recruitment in the terminal year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model. Values greater than 0 indicate the estimation model is bias high (overestimating)."
-ts |> 
+#| fig-cap: "Relative error of the log of recruitment in the terminal year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model. Values greater than 0 indicate the estimation model is bias high (overestimating). Red points are means of the distributions."
+plt_dat <- ts |> 
   filter(year == 100 | year == 2022) |>
   tidyr::pivot_wider(names_from = model_run, values_from = Recruit_0, 
                      id_cols = c(iteration, scenario, species, sigR, nyr, indexSE)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
   mutate(are = abs((em-om)/om),
          rel_err = (log(em) - log(om))/log(om),
-         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]')) |> 
+         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]'),
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) 
+
+plt_dat|>
   group_by(scenario, nyr) |>
-  ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr),
-                  group = paste(nyr, scenario)), linewidth = 0.5) + 
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
   geom_hline(yintercept = 0, color = 'black') +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
   labs(x = 'Index SE', y = 'Relative error of\nlog(terminal year recruitment)', 
-       fill = 'Number of\nyears of index') +
+       fill = 'Number of\nyrs of index') +
   facet_grid(species ~ sigR, labeller = label_parsed, scales = 'free_y') +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+plt_dat |>
+  group_by(scenario, species, sigR, nyr) |>
+  summarise(median(rel_err)) |> View()
 ## To decide:: Keep index SEs the same for high and low sigR? They are unrealistically low for high sigR. I am guessing if you increase sigR and index SE proportionally nothing changes? (Should make sure?)
 ```
 
 ```{r}
 #| warning: false
 #| label: fig-mid-ts-rec
-#| fig-cap: "Relative error of the log of recruitment in the 80th year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model"
+#| fig-cap: "Relative error of the log of recruitment in the 70th year of the estimation model. Index is included in the *final* 10 or 30 years of the estimation model. Note y-axis scales differ by species. Red points are means of the distributions."
 ts |> 
-  filter(year == 69 | year == 2022-31) |>
+  filter(year == 70 | year == 2022-31) |>
   tidyr::pivot_wider(names_from = model_run, values_from = Recruit_0, 
                      id_cols = c(iteration, scenario, species, sigR, nyr)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
   mutate(are = abs((em-om)/om),
          rel_err = (log(em) - log(om))/log(om),
-         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]')) |> 
+         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]'),
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |> 
   group_by(scenario, nyr) |>
-  ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr),
-                  # alpha = nyr, 
-                  group = paste(nyr, scenario))) + 
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
   geom_hline(yintercept = 0, color = 'black') +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
   # scale_fill_manual(values = rev(LaCroixColoR::lacroix_palette('Orange', 6))) +
   labs(x = 'Index SE', y = 'Relative error of\nlog(terminal year recruitment)', 
-       fill = 'Number of\nyears of index') +
-  facet_grid(species ~ sigR, labeller = label_parsed) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3])
-
+       fill = 'Number of\nyrs of index') +
+  facet_grid(species ~ sigR, labeller = label_parsed, scales = 'free_y') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 # Appendix? Delete entirely?
@@ -597,19 +616,26 @@ ts |>
 ```{r}
 #| warning: false
 #| label: fig-r0
-#| fig-cap: "Relative error of the estimate of the log of unfished recruitment. Index is included in the final 10 or 30 years of the estimation model. Note varying y-axis scales."
+#| fig-cap: "Relative error of the estimate of the log of unfished recruitment. Index is included in the final 10 or 30 years of the estimation model. Note varying y-axis scales. Red points are means of the distributions."
+#| fig-align: 'left'
 p.high_sigR <- scalar |> 
   filter(sigR == 'high') |>
   tidyr::pivot_wider(names_from = model_run, values_from = SR_LN_R0, 
                      id_cols = c(iteration, scenario, species, nyr, sigR)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
   mutate(are = abs((em-om)/om),
-         rel_err = (em - om)/om) |> 
+         rel_err = (em - om)/om,
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |>  
   group_by(scenario, species, nyr) |>
-  ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
   geom_hline(yintercept = 0, color = 'black') +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
-  labs(x = 'Index SE', y = 'Relative error of log of unfished recruitment', 
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
+  labs(x = 'Index SE', y = expression(paste('Relative error of log(', R[0], ')')), 
        title = parse(text = '"High"~sigma[R]')) +
   facet_wrap(~ species, scales = 'free_y', nrow = 2) +
   theme(legend.position = 'none',
@@ -623,15 +649,21 @@ p.low_sigR <- scalar |>
   filter(sigR == 'low') |>
   tidyr::pivot_wider(names_from = model_run, values_from = SR_LN_R0, 
                      id_cols = c(iteration, scenario, species, nyr, sigR)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
   mutate(are = abs((em-om)/om),
-         rel_err = (em - om)/om) |> 
+         rel_err = (em - om)/om,
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |>  
   group_by(scenario, species, nyr) |>
-  ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
   geom_hline(yintercept = 0, color = 'black') +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
   labs(x = 'Index SE', y = '',
-       fill = 'Number of\nyears of index',
+       fill = 'Number of\nyrs of index',
        title = parse(text = '"Low"~sigma[R]')) +
   facet_wrap(~ species, scales = 'free_y', nrow = 2, strip.position = 'right') +
   theme(plot.title = element_text(hjust = 0.5, size = rel(0.8)),
@@ -658,22 +690,28 @@ cowplot::plot_grid(
 ```{r}
 #| warning: false
 #| label: fig-M
-#| fig-cap: "Relative error of the estimate of natural mortality in the petrale sole model. Natural mortality is fixed at its true value in the cod model. Index is included in the final 10 or 30 years of the estimation model"
+#| fig-cap: "Relative error of the estimate of natural mortality in the petrale sole model. Natural mortality is fixed at its true value in the cod model. Index is included in the final 10 or 30 years of the estimation model. Red points are means of the distributions."
 scalar |> 
   filter(species == 'Petrale') |> 
   tidyr::pivot_wider(names_from = model_run, values_from = NatM_uniform_Fem_GP_1, 
                      id_cols = c(iteration, scenario, species, nyr, sigR)) |>
+  filter(scenario != 'No index' | nyr == 10) |>                    
   mutate(are = abs((em-om)/om),
          rel_err = (em - om)/om,
-         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]')) |>
+         sigR = ifelse(sigR == 'low', '"Low"~sigma[R]', '"High"~sigma[R]'),
+         nyr = ifelse(scenario == 'No index', 'none', nyr)) |> 
   group_by(scenario) |>
-  ggplot() +
-  geom_violin(aes(x = scenario, y = rel_err, fill = factor(nyr))) +
+  ggplot(aes(x = scenario, y = rel_err, fill = factor(nyr), group = paste(nyr, scenario))) +
+  geom_violin(
+    aes(width = after_stat(0.45 * ave(group, x, FUN = \(g) length(unique(g))))),
+    linewidth = 0.5
+  ) +  
+  stat_summary(fun = median, geom = 'point', color = 'red', position = position_dodge(0.9)) +
   geom_hline(yintercept = 0, color = 'black') +
-  scale_fill_manual(values = inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3]) +
+  scale_fill_manual(values = c(inauguration::inauguration(name = 'inauguration_2021', n = 3)[2:3], '#595959FF')) +
   facet_wrap(~ sigR, labeller = label_parsed) +
   labs(x = 'Index SE', y = 'Relative error of natural mortality', 
-       fill = 'Number of\nyears of index') +
+       fill = 'Number of\nyrs of index') +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = 'bottom', 
         legend.direction = 'horizontal'
@@ -727,7 +765,7 @@ mare_pts <- dq_long |>
          col = guide_legend(reverse = TRUE)) +
   scale_color_manual(values = pal) +
   theme(legend.position = 'none', strip.text = element_blank()) +
-  labs(y = '', col = 'Index SE', linetype = 'Number of\nyears of index')
+  labs(y = '', col = 'Index SE', linetype = 'Number of\nyrs of index')
 
 mare_pts_high <- mare_pts +
    geom_text(aes(label = labs), x = -Inf, y = Inf, col = 'black', hjust = -0.5, vjust = 1.5, data = data.frame(labs = c('(b)', '(f)'), species = c('Cod', 'Petrale'), sigR = 'low'))

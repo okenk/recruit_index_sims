@@ -257,3 +257,55 @@ sim_res <- get_results_all(directory = sim_dir,
 tictoc::toc()
 
 source('R/cod_OM.R')
+
+# Fix M ------------------------------------------------
+
+# copy OM runs
+sim_dir <- file.path('simulations', 'petrale_fix_M')
+dir.create(sim_dir)
+file.copy(from = file.path('simulations', 'petrale', 'base'),#c('base', 'no.ind')),
+          to = sim_dir, recursive = TRUE)
+
+sd_seq <- c(0.05, 0.1, 0.2, 0.3, 0.5)
+nsim <- 100
+
+# get true M
+OM_inputs <- SS_read('simulations/petrale/no.ind/1/om')
+true_M <- OM_inputs$ctl$MG_parms['NatM_p_1_Fem_GP_1', 'INIT']
+
+# fix M in EM ctl files
+list.dirs(sim_dir) |>
+  stringr::str_subset('em') |>
+  stringr::str_subset('bias_00', negate = TRUE) |> 
+  purrr::walk(\(dir) {
+    inputs <- SS_read(dir)
+    inputs$ctl$MG_parms['NatM_p_1_Fem_GP_1', 'INIT'] <- true_M
+    SS_write(inputs, dir, overwrite = TRUE)
+  })
+
+# run EMs
+plan(multisession, workers = ncore-2)
+
+run_no_index_sims(sim_dir = sim_dir, 
+                  rec_flt_ind = rec_flt_ind, 
+                  nsim = nsim, 
+                  do_bias = TRUE)
+
+run_index_sims(sim_dir = sim_dir,
+               rec_flt_ind = rec_flt_ind, 
+               nsim = nsim, 
+               do_bias = TRUE, 
+               sd_seq = sd_seq,
+               rec_ind_len = 10)
+
+tictoc::tic()
+plan(sequential, split = TRUE)
+
+scenario_names <- paste(sd_seq, 10, sep = "_")
+
+sim_res <- get_results_all(directory = sim_dir, 
+                           user_scenarios = scenario_names, # not reading in no.ind
+                           overwrite_files = TRUE)
+tictoc::toc()
+
+source('R/cod_OM.R')
