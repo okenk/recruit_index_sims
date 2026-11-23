@@ -27,9 +27,23 @@ inst/extdata/models/retrospectives/*
 *.pdf
 figs/*
 simulations/*/*/*.csv
+
+# Individual simulations
+simulations/**
+# Allow Git to enter the top-level subfolders of simulations
+!simulations/*/
+!simulations/*/*/
+!simulations/*/*/*/
+
+!simulations/*/no.ind/1/**
+!simulations/petrale/*_30/30/em/**
+!simulations/cod/*_30/46/em/**
+!simulations/petrale/no.ind/30/om/**
+!simulations/cod/no.ind/46/om/**
+
+**/bias_00/**
+
 # ss3 files
-simulations/*/*/*
-!simulations/*/no.ind/1/
 ss3.b*
 ss3.log
 ss3.p*
