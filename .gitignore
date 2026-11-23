@@ -48,6 +48,7 @@ ss3.b*
 ss3.log
 ss3.p*
 ss3.r*
+ss3.eva
 *.ss_new
 varssave.tmp
 runnumber.ss
@@ -58,3 +59,5 @@ console.output.txt
 ss_summary.sso
 gradfil*.tmp
 cmpdiff.tmp
+*posterior*
+SIS*
